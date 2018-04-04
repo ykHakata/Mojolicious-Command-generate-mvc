@@ -13,6 +13,14 @@ sub run {
 
     my $error_msg
         = 'Your application name has to be a well formed (CamelCase) Perl module name like "MyApp". ';
+
+    # 指定ない場合 doc, etc を配置
+    if ( !scalar @class_names ) {
+        $self->app->commands->run( 'generate', 'doc' );
+        $self->app->commands->run( 'generate', 'etc' );
+        return;
+    }
+
     for my $name (@class_names) {
         next if $name =~ /^[A-Z](?:\w|::)+$/;
         $error_msg = "Your input name [$name] ?\n" . $error_msg;
@@ -21,157 +29,161 @@ sub run {
 
     # app 自身のクラス名取得
     die 'Can not get class name!' if $home->path('lib')->list->size ne 1;
-    my $appclass = $home->path('lib')->list->first->basename('.pm');
+    my $app = $home->path('lib')->list->first->basename('.pm');
 
-    # Controller Base
-    my $controller_base      = join '::', $appclass, 'Controller', 'Base';
-    my $controller_base_file = class_to_path $controller_base;
-    my $controller_base_args = +{
-        class   => $controller_base,
-        appname => $appclass,
-    };
+    # lib/App/Controller/Base.pm
+    $self->_lib_file( $app, [ 'Controller', 'Base' ], 'controller_base' );
 
-    $self->render_to_rel_file( 'controller_base', "lib/$controller_base_file",
-        $controller_base_args );
+    # lib/App/Model/Base.pm
+    $self->_lib_file( $app, [ 'Model', 'Base' ], 'model_base' );
 
-    # Model Base
-    my $model_base      = join '::', $appclass, 'Model', 'Base';
-    my $model_base_file = class_to_path $model_base;
-    my $model_base_args = +{
-        class   => $model_base,
-        appname => $appclass,
-    };
+    # lib/App/DB/Base.pm
+    $self->_lib_file( $app, [ 'DB', 'Base' ], 'db_base' );
 
-    $self->render_to_rel_file( 'model_base', "lib/$model_base_file",
-        $model_base_args );
+    # lib/App/Model.pm
+    $self->_lib_file( $app, ['Model'], 'model_pm' );
 
-    # DB Base
-    my $db_base      = join '::', $appclass, 'DB', 'Base';
-    my $db_base_file = class_to_path $db_base;
-    my $db_base_args = +{
-        class   => $db_base,
-        appname => $appclass,
-    };
+    # lib/App/DB.pm
+    $self->_lib_file( $app, ['DB'], 'db_pm' );
 
-    $self->render_to_rel_file( 'db_base', "lib/$db_base_file",
-        $db_base_args );
+    # lib/App/DB/Master.pm
+    $self->_lib_file( $app, [ 'DB', 'Master' ], 'master_pm' );
 
-    # Model.pm
-    my $model_pm      = join '::', $appclass, 'Model';
-    my $model_pm_file = class_to_path $model_pm;
-    my $model_pm_args = +{
-        class   => $model_pm,
-        appname => $appclass,
-    };
+    # lib/App/Util.pm
+    $self->_lib_file( $app, ['Util'], 'util_pm' );
 
-    $self->render_to_rel_file( 'model_pm', "lib/$model_pm_file",
-        $model_pm_args );
+    # lib/App/Controller/
+    $self->_lib_file( $app, [ 'Controller', @class_names ], 'controller' );
 
-    # DB.pm
-    my $db_pm      = join '::', $appclass, 'DB';
-    my $db_pm_file = class_to_path $db_pm;
-    my $db_pm_args = +{
-        class   => $db_pm,
-        appname => $appclass,
-    };
+    # lib/App/Model/
+    $self->_lib_file( $app, [ 'Model', @class_names ], 'model' );
 
-    $self->render_to_rel_file( 'db_pm', "lib/$db_pm_file", $db_pm_args );
+    # lib/Test/Mojo/Role/Basic.pm
+    $self->_lib_test_file($app);
 
-    # Master.pm
-    my $master_pm      = join '::', $appclass, 'DB', 'Master';
-    my $master_pm_file = class_to_path $master_pm;
-    my $master_pm_args = +{
-        class   => $master_pm,
-        appname => $appclass,
-    };
+    # db/app_schema.sql
+    $self->_db_file($app);
 
-    $self->render_to_rel_file( 'master_pm', "lib/$master_pm_file",
-        $master_pm_args );
+    # t/app.t or t/
+    $self->_t_file( $app, \@class_names );
 
-    # Util.pm
-    my $util_pm      = join '::', $appclass, 'Util';
-    my $util_pm_file = class_to_path $util_pm;
-    my $util_pm_args = +{
-        class   => $util_pm,
-        appname => $appclass,
-    };
+    # templates/
+    $self->_templates_file( \@class_names );
 
-    $self->render_to_rel_file( 'util_pm', "lib/$util_pm_file",
-        $util_pm_args );
+    # doc/
+    $self->_doc_file( $app, \@class_names );
+    return;
+}
 
-    # Test/Mojo/Role/Basic.pm
+sub _array_to_path {
+    my ( $self, $array ) = @_;
+    return class_to_path( join '::', @{$array} );
+}
+
+# lib/Test/Mojo/Role/Basic.pm
+sub _lib_test_file {
+    my $self     = shift;
+    my $appclass = shift;
+
     my $test_mojo_role      = join '::', 'Test', 'Mojo', 'Role', 'Basic';
     my $test_mojo_role_file = class_to_path $test_mojo_role;
     my $test_mojo_role_args = +{
         class   => $test_mojo_role,
         appname => $appclass,
     };
-
     $self->render_to_rel_file( 'test_mojo_role', "lib/$test_mojo_role_file",
         $test_mojo_role_args );
+    return;
+}
 
-    # t/app.t
-    my $t_app_t_name = class_to_file $appclass;
-    my $t_app_t_file = $t_app_t_name . '.t';
-    my $t_app_t_args = +{
-        appname => $appclass,
-    };
-    $self->render_to_rel_file( 'test', "t/$t_app_t_file", $t_app_t_args );
-
-    # db/app_schema.sql
+# db/app_schema.sql
+sub _db_file {
+    my $self     = shift;
+    my $appclass = shift;
     my $sql_name = class_to_file $appclass;
     my $sql_file = $sql_name . '_schema.sql';
     $self->render_to_rel_file( 'sql', "db/$sql_file" );
+    return;
+}
+
+# t/app.t or t/
+sub _t_file {
+    my $self        = shift;
+    my $appclass    = shift;
+    my $class_names = shift;
+
+    my $t_app_t_name = class_to_file $appclass;
+    my $t_app_t_file = $t_app_t_name . '.t';
+    my $t_app_t_args = +{ appname => $appclass, };
+    $self->render_to_rel_file( 'test', "t/$t_app_t_file", $t_app_t_args );
+
+    my $controller_file = $self->_array_to_path(
+        [ $appclass, 'Controller', @{$class_names} ] );
+
+    # ひとつの区切りごとに class_to_file をしないといけない
+    my @test_files = split '/', $controller_file;
+    for my $name (@test_files) {
+        $name = class_to_file $name;
+    }
+    my $test_file = join '/', @test_files;
+    $test_file =~ s{\Q.pm\E}{.t};
+    my $test_args = +{ appname => $appclass, };
+    $self->render_to_rel_file( 'test', "t/$test_file", $test_args );
+    return;
+}
+
+# templates/
+sub _templates_file {
+    my $self           = shift;
+    my $class_names    = shift;
+    my $templates_file = class_to_file join '/', @{$class_names},
+        'index.html.ep';
+    $self->render_to_rel_file( 'index', "templates/$templates_file" );
+    return;
+}
+
+# doc/
+sub _doc_file {
+    my $self        = shift;
+    my $appclass    = shift;
+    my $class_names = shift;
 
     # Controller
-    my $controller      = join '::', $appclass, 'Controller', @class_names;
-    my $controller_file = class_to_path $controller;
-    my $controller_args = +{
-        class   => $controller,
-        appname => $appclass,
-    };
-
-    $self->render_to_rel_file( 'controller', "lib/$controller_file",
-        $controller_args );
-
-    # Test
-    my @test_names = split '::', $controller;
-    for my $name (@test_names) {
-        $name = class_to_file $name;
-    }
-    my $test_name = join '/', @test_names;
-    my $test_file = $test_name . '.t';
-    my $test_args = +{
-        appname => $appclass,
-    };
-    $self->render_to_rel_file( 'test', "t/$test_file", $test_args );
-
-    # Templates
-    my @templates_names;
-    for my $name (@class_names) {
-        push @templates_names, class_to_file $name;
-    }
-    push @templates_names, 'index';
-    my $templates_name = join '/', @templates_names;
-    my $templates_file = $templates_name . '.html.ep';
-    $self->render_to_rel_file( 'index', "templates/$templates_file" );
+    my $controller_file = $self->_array_to_path(
+        [ $appclass, 'Controller', @{$class_names} ] );
 
     # Model
-    my $model      = join '::', $appclass, 'Model', @class_names;
-    my $model_file = class_to_path $model;
-    my $model_args = +{
-        class   => $model,
-        appname => $appclass,
-    };
-    $self->render_to_rel_file( 'model', "lib/$model_file", $model_args );
+    my $model_file
+        = $self->_array_to_path( [ $appclass, 'Model', @{$class_names} ] );
 
-    # Doc
-    my @doc_names = split '::', $controller;
-    for my $name (@doc_names) {
+    # Templates
+    # ひとつの区切りごとに class_to_file をしないといけない
+    my @templates_names;
+    for my $name ( @{$class_names} ) {
+        push @templates_names, class_to_file $name;
+    }
+    my $templates_name = join '/', @templates_names, '';
+    my $templates_file = $templates_name;
+
+    # ひとつの区切りごとに class_to_file をしないといけない
+    my @test_files = split '/', $controller_file;
+    for my $name (@test_files) {
         $name = class_to_file $name;
     }
-    my $doc_name = join '/', @doc_names;
-    my $doc_file = $doc_name . '.md';
+    my $test_file = join '/', @test_files;
+    $test_file =~ s{\Q.pm\E}{.t};
+
+    # ひとつの区切りごとに class_to_file をしないといけない
+    my @doc_files = split '/', $controller_file;
+    for my $name (@doc_files) {
+        $name = class_to_file $name;
+    }
+    my $doc_file = join '/', @doc_files;
+
+    $doc_file =~ s{\Q.pm\E}{.md};
+    my $doc_name = $doc_file;
+    $doc_name =~ s{\Q.md\E}{};
+
     my $doc_args = +{
         name       => $doc_name,
         appname    => $appclass,
@@ -181,6 +193,23 @@ sub run {
         test       => $test_file,
     };
     $self->render_to_rel_file( 'doc', "doc/$doc_file", $doc_args );
+    return;
+}
+
+# lib/
+sub _lib_file {
+    my $self     = shift;
+    my $appclass = shift;
+    my $names    = shift;
+    my $template = shift;
+
+    my $class     = join '::', $appclass, @{$names};
+    my $file_path = class_to_path $class;
+    my $args      = +{
+        class   => $class,
+        appname => $appclass,
+    };
+    $self->render_to_rel_file( $template, "lib/$file_path", $args );
     return;
 }
 
@@ -434,7 +463,7 @@ use Mojo::Util qw{dumper};
 sub init {
     my $self = shift;
     $ENV{MOJO_MODE} = 'testing';
-    my $t = Test::Mojo->new('<%= $args->{appname} %>');
+    my $t = Test::Mojo->with_roles('+Basic')->new('<%= $args->{appname} %>');
     die 'not testing mode' if $t->app->mode ne 'testing';
 
     # test DB
@@ -467,6 +496,7 @@ use Mojo::Base '<%= $args->{appname} %>::Controller::Base';
 sub index {
     my $self = shift;
     $self->render(text => 'index');
+    return;
 }
 
 1;
