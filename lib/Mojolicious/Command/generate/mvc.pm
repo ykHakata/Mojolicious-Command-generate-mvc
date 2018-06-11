@@ -136,8 +136,13 @@ sub _t_file {
 sub _templates_file {
     my $self           = shift;
     my $class_names    = shift;
-    my $templates_file = class_to_file join '/', @{$class_names},
-        'index.html.ep';
+
+    # ひとつの区切りごとに class_to_file をしないといけない
+    my $names = [];
+    for my $name ( @{$class_names} ) {
+        push @{$names}, class_to_file $name;
+    }
+    my $templates_file = join '/', @{$names}, 'index.html.ep';
     $self->render_to_rel_file( 'index', "templates/$templates_file" );
     return;
 }
